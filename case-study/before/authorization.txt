@@ -1,0 +1,9 @@
+INERT VULNERABILITY EXHIBIT — NOT EXECUTABLE
+
+Original pattern:
+- The React interface hid administrator buttons when user.role was not "admin".
+- The API update endpoint did not verify the caller's role or resource ownership.
+- A direct HTTP request could therefore modify another user's ticket.
+
+Impact: broken object-level authorization and unauthorized state changes.
+
