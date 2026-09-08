@@ -1,0 +1,9 @@
+INERT VULNERABILITY EXHIBIT — NOT EXECUTABLE
+
+Original pattern:
+- A provider credential was bundled into frontend configuration.
+- Error handling returned an empty list for authentication and network failures.
+- No request identifier connected client failures to server logs.
+
+No real or usable credentials are included in this repository.
+
