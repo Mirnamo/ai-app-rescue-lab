@@ -4,6 +4,12 @@ from app.main import app
 client = TestClient(app)
 
 
+def test_root_describes_api_entry_points():
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.json()["case_study"] == "/api/case-study"
+
+
 def test_agent_only_sees_owned_tickets():
     response = client.get("/api/tickets", headers={"X-User": "demo-agent", "X-Role": "agent"})
     assert response.status_code == 200

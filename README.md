@@ -52,11 +52,15 @@ Or run each application separately:
 
 ```bash
 cd backend
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-# macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+# Windows PowerShell (selects Python 3.12 or 3.11 automatically):
+Set-ExecutionPolicy -Scope Process Bypass
+\.\setup.ps1
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+# Python 3.14 is not supported by the pinned pydantic-core release.
+# macOS/Linux:
+# python3.11 -m venv .venv
+# .venv/bin/python -m pip install -r requirements.txt
+# .venv/bin/python -m uvicorn app.main:app --reload
 ```
 
 ```bash
@@ -82,8 +86,8 @@ The demonstration identity uses `X-User` and `X-Role` headers. Production deploy
 
 ```bash
 cd backend
-pip install -r requirements-dev.txt
-pytest
+\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+\.venv\Scripts\python.exe -m pytest
 
 cd ../frontend
 npm run build

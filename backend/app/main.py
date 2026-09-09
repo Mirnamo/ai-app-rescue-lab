@@ -26,6 +26,16 @@ async def correlation_id(request: Request, call_next):
     return response
 
 
+@app.get("/")
+def root() -> dict[str, str]:
+    return {
+        "name": "AI App Rescue Lab API",
+        "health": "/health",
+        "case_study": "/api/case-study",
+        "docs": "/docs",
+    }
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
