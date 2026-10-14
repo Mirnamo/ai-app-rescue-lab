@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from uuid import uuid4
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -52,8 +52,13 @@ def list_tickets(user: Identity = Depends(identity)) -> list[Ticket]:
 
 
 @app.post("/api/tickets", response_model=Ticket, status_code=201)
-def create_ticket(data: TicketCreate, user: Identity = Depends(identity)) -> Ticket:
-    return service.create(data, user)
+def create_ticket(data: TicketCreate, user: Identity = Depends(identity), idempotency_key: str | None = Header(default=None, min_length=1, max_length=128)) -> Ticket:
+    if idempotency_key is not None and not idempotency_key.strip():
+        raise HTTPException(status_code=422, detail={"code": "invalid_idempotency_key"})
+    try:
+        return service.create(data, user, idempotency_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail={"code": "idempotency_conflict", "message": str(exc)}) from exc
 
 
 @app.patch("/api/tickets/{ticket_id}", response_model=Ticket)
@@ -68,4 +73,5 @@ def update_ticket(ticket_id: int, patch: TicketPatch, user: Identity = Depends(i
 def audit_events(user: Identity = Depends(identity)) -> list[AuditEvent]:
     require_admin(user)
     return list(reversed(service.events))
+
 
