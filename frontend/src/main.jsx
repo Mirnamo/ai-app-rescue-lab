@@ -2,20 +2,33 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
 
 function App(){
-  const [study,setStudy]=useState(null);const [selected,setSelected]=useState(null);const [tab,setTab]=useState("findings");const [error,setError]=useState("");
-  useEffect(()=>{fetch(`${API}/api/case-study`).then(r=>{if(!r.ok)throw Error("Could not load case study");return r.json()}).then(setStudy).catch(e=>setError(e.message))},[]);
-  if(error)return <main><div className="error">{error}. Confirm the API is running on port 8000.</div></main>;
-  if(!study)return <main><div className="loading">Loading rescue evidence…</div></main>;
-  return <main><nav><div className="brand"><span>AR</span><b>App Rescue Lab</b></div><div className="navright"><span className="live">CASE STUDY</span><a href="https://github.com/Mirnamo">GitHub ↗</a></div></nav>
-  <header><div><p>RECOVERY REPORT / {study.application.toUpperCase()}</p><h1>From generated<br/>to <em>production-minded.</em></h1><div className="summary">{study.summary}</div></div><div className="scoreCard"><div><span>BEFORE</span><strong>{study.before_score}</strong></div><i>→</i><div className="after"><span>AFTER</span><strong>{study.after_score}</strong></div></div></header>
-  <section className="stats"><article><strong>{study.metrics.findings_fixed}</strong><span>Findings fixed</span></article><article><strong>{study.metrics.tests_added}</strong><span>Test scenarios</span></article><article><strong>{study.metrics.protected_routes}</strong><span>Protected routes</span></article><article><strong>{study.metrics.audit_coverage}%</strong><span>Mutation audit coverage</span></article></section>
-  <section className="phases">{study.phases.map((p,i)=><article key={p.name}><span>0{i+1}</span><div><b>{p.name}</b><small>{p.result}</small></div></article>)}</section>
-  <div className="tabs"><button className={tab==="findings"?"active":""} onClick={()=>setTab("findings")}>Remediation findings</button><button className={tab==="architecture"?"active":""} onClick={()=>setTab("architecture")}>Architecture rescue</button></div>
-  {tab==="findings"?<section className="workspace"><div className="panel list"><div className="head"><p>FIXED FINDINGS</p><h2>Evidence and remediation</h2></div>{study.findings.map(f=><button key={f.id} className={selected?.id===f.id?"selected":""} onClick={()=>setSelected(f)}><span className={`severity ${f.severity}`}>{f.severity}</span><div><b>{f.title}</b><small>{f.id} · {f.category}</small></div><i>→</i></button>)}</div><aside className="panel detail">{selected?<><p>{selected.id}</p><h2>{selected.title}</h2><label>Evidence</label><div className="evidence">{selected.evidence}</div><label>Implemented fix</label><div className="fix">{selected.remediation}</div><span className="resolved">✓ Resolved and verified</span></>:<div className="empty">Select a finding to see what was broken, why it mattered, and how it was repaired.</div>}</aside></section>:<Architecture/>}
-  </main>
+ const [report,setReport]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
+ const worker=React.useRef(null);
+ useEffect(()=>()=>worker.current?.terminate(),[]);
+ async function upload(event){
+  const file=event.target.files?.[0];event.target.value="";if(!file)return;
+  setError("");setReport(null);
+  if(!file.name.toLowerCase().endsWith('.zip')){setError('Choose a ZIP archive.');return;}
+  if(file.size>15*1024*1024){setError('ZIP exceeds the 15 MB limit.');return;}
+  setBusy(true);
+  try{
+   const buffer=await file.arrayBuffer();worker.current?.terminate();
+   const w=new Worker(new URL('./scan-worker.js',import.meta.url),{type:'module'});worker.current=w;
+   const timeout=setTimeout(()=>{w.terminate();setBusy(false);setError('Analysis timed out. Try a smaller archive.');},30000);
+   w.onmessage=({data})=>{clearTimeout(timeout);setBusy(false);if(data.error)setError(data.error);else setReport(data.report);w.terminate();};
+   w.onerror=()=>{clearTimeout(timeout);setBusy(false);setError('Analysis failed. Try a smaller source archive.');w.terminate();};
+   w.postMessage({buffer,name:file.name.replace(/\.zip$/i,'')},[buffer]);
+  }catch(e){setBusy(false);setError(e.message);}
+ }
+ function download(){const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='app-rescue-report.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+ return <main><nav><div className="brand"><span>AR</span><b>AI App Rescue Lab</b></div><a href="https://github.com/Mirnamo/ai-app-rescue-lab">GitHub ↗</a></nav>
+ <header><div><p>YOUR PROJECT / STATIC CODE REVIEW</p><h1>Find risks.<br/><em>Plan your rescue.</em></h1><div className="summary">Upload a source ZIP to identify common security and reliability signals with file locations and remediation guidance. Analysis runs locally in your browser; source code is not uploaded.</div><label className="scanUpload">{busy?'Analyzing…':'Analyze your ZIP'}<input aria-label="Upload project ZIP" disabled={busy} type="file" accept=".zip" onChange={upload}/></label><p>15 MB ZIP · 40 MB expanded · 2,000 entries · 2 MB per file</p></div></header>
+ {error&&<div className="error" role="alert">{error}</div>}{busy&&<div className="loading" role="status">Reviewing source files…</div>}
+ {report&&<><h2>{report.project}</h2><section className="stats"><article><strong>{report.summary.files}</strong><span>Files reviewed</span></article><article><strong>{report.summary.lines}</strong><span>Lines reviewed</span></article><article><strong>{report.findings.length}</strong><span>Review signals</span></article><article><strong>{report.summary.high}</strong><span>High priority</span></article></section><button onClick={download}>Download JSON report</button><p>{report.limitations}</p><section className="reportFindings">{report.findings.length?report.findings.map(f=><article className="panel" key={f.id}><span className={`severity ${f.severity}`}>{f.severity}</span><h3>{f.title}</h3><p>{f.path}{f.line?` · line ${f.line}`:''}</p><p>{f.remediation}</p><small>Needs human review · No automatic fix applied</small></article>):<div className="panel">No configured rule signals found. This does not establish that the app is secure.</div>}</section><details><summary>Reviewed files</summary>{report.files.map(f=><p key={f.path}>{f.path} · {f.lines} lines</p>)}</details></>}
+ <p>This tool does not run your app, verify authentication, or certify production readiness. Review findings before changing code.</p></main>
 }
 function Architecture(){return <section className="architecture"><div className="arch before"><p>BEFORE</p><h2>Generated monolith</h2><div className="node">React UI + role checks</div><div className="arrow">↓</div><div className="node risk">Unvalidated API + business logic</div><div className="arrow">↓</div><div className="node risk">Direct database access</div><small>Client trust · coupled logic · silent errors</small></div><div className="divider">→</div><div className="arch after"><p>AFTER</p><h2>Explicit trust boundaries</h2><div className="node">React interface</div><div className="arrow">↓</div><div className="node safe">Identity + policy + validation</div><div className="arrow">↓</div><div className="nodes"><span>Service</span><span>Repository</span><span>Audit</span></div><small>Server enforcement · typed contracts · traceable changes</small></div></section>}
 createRoot(document.getElementById("root")).render(<App/>);
