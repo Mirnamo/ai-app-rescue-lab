@@ -56,7 +56,7 @@ async def analyze_project(file: UploadFile = File(...)) -> dict:
         data = await file.read(15 * 1024 * 1024 + 1)
         if len(data) > 15 * 1024 * 1024:
             raise HTTPException(status_code=413, detail="ZIP exceeds the 15 MB limit.")
-        filename = file.filename.replace("\\\\", "/").rsplit("/", 1)[-1]
+        filename = file.filename.rsplit("/", 1)[-1].rsplit(chr(92), 1)[-1]
         project = filename[:-4] if filename.lower().endswith(".zip") else filename
         return analyze_zip(data, project)
     except ValueError as exc:
