@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import os
 from uuid import uuid4
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -9,9 +10,10 @@ from .auth import Identity, identity, require_admin
 from .case_study import case_study
 from .models import AuditEvent, Ticket, TicketCreate, TicketPatch
 from .service import RescueService
+from .zip_analyzer import analyze_zip
 
 app = FastAPI(title="AI App Rescue Lab", version="1.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=[origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",") if origin.strip()], allow_methods=["GET", "POST", "PATCH"], allow_headers=["*"])
 service = RescueService()
 
 
@@ -44,6 +46,23 @@ def health() -> dict[str, str]:
 @app.get("/api/case-study")
 def get_case_study() -> dict:
     return case_study()
+
+
+@app.post("/api/analyze")
+async def analyze_project(file: UploadFile = File(...)) -> dict:
+    if not file.filename or not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=415, detail="Upload a ZIP archive")
+    try:
+        data = await file.read(15 * 1024 * 1024 + 1)
+        if len(data) > 15 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="ZIP exceeds the 15 MB limit.")
+        filename = file.filename.replace("\\\\", "/").rsplit("/", 1)[-1]
+        project = filename[:-4] if filename.lower().endswith(".zip") else filename
+        return analyze_zip(data, project)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        await file.close()
 
 
 @app.get("/api/tickets", response_model=list[Ticket])
