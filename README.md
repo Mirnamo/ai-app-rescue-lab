@@ -9,7 +9,7 @@ The React app accepts source ZIP archives and offers two analysis modes:
 
 Both modes report heuristic signals with file locations and remediation guidance. Findings require human review; this is not a security certification or complete vulnerability scanner. The app does not execute or automatically repair uploaded code.
 
-Rules flag possible hardcoded credentials (without displaying their values), dynamic execution, unsafe HTML rendering, debug mode, wildcard CORS, silent error handling, shell execution, large files, and missing test-file signals. Limits: 15 MB compressed, 40 MB expanded, 2 MB per supported file, and 2,000 entries. Generated/dependency folders and binary files are skipped. Unsafe archive paths and symlinks are rejected.
+Rules flag possible hardcoded credentials (without displaying their values), dynamic execution, unsafe HTML rendering, debug mode, wildcard CORS, silent error handling, shell execution, client-controlled authorization signals, potentially unsafe SQL construction, large files, and missing test-file signals. Limits: 15 MB compressed, 40 MB expanded, 2 MB per supported file, and 2,000 entries. Generated/dependency folders and binary files are skipped. Unsafe archive paths and symlinks are rejected.
 
 ### Deploy the frontend and connect the Python API
 
