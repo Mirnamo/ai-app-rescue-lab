@@ -46,7 +46,7 @@ def test_flags_client_controlled_roles_and_interpolated_sql() -> None:
     source = (
         "def is_admin(headers):\n"
         "    return headers.get('X-User-Role') == 'admin'\n"
-        "query = f\\"SELECT * FROM users WHERE email = '{email}'\\"\\n"
+        "query = f'SELECT * FROM users WHERE email = {email}'\n"
     )
     report = analyze_zip(make_archive({
         "src/routes.py": source,
