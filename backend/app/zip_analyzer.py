@@ -15,6 +15,8 @@ RULES = [
     ("DEBUG", "Debug mode enabled", "medium", re.compile(r"debug\s*[:=]\s*(?:true|True)\b"), "Disable debug mode in production configuration."),
     ("CORS", "Wildcard CORS policy", "medium", re.compile(r"""allow_origins\s*=\s*\[\s*['"]\*['"]|Access-Control-Allow-Origin['"]?\s*[:=]\s*['"]\*['"]""", re.I), "Review allowed origins and credential handling for sensitive endpoints."),
     ("SILENT", "Silent error handling signal", "medium", re.compile(r"catch\s*\([^)]*\)\s*\{\s*\}|except[^:\n]*:\s*pass\b|\.catch\s*\(\s*\(\)\s*=>\s*\[\]"), "Return actionable errors and log failures without exposing secrets."),
+    ("AUTH", "Client-controlled authorization signal", "high", re.compile(r"""(?:\b(?:request|req)\.headers|\bheaders)\s*(?:\.\s*get\s*\(\s*|\[\s*)['"]x-(?:user-)?(?:role|admin)['"]|\b(?:request|req)\.(?:json|body|form|query_params)(?:\(\))?(?:\.\s*get\s*\(\s*|\[\s*)['"](?:role|is_admin|isAdmin|admin)['"]""", re.I), "Do not trust caller-supplied roles. Authenticate the user and enforce permissions server-side."),
+    ("SQL", "Potentially unsafe SQL construction", "high", re.compile(r"""\b(?:select|insert|update|delete|replace)\b[^;\n]{0,500}(?:\{[A-Za-z_]\w*\}|\$\x7b[^}]+\}|\$[A-Za-z_]\w*|\+\s*(?:email|user_?input|input|request|req|params?|user_?id)\b|\.format\s*\()""", re.I), "Use parameterized queries or prepared statements; never interpolate untrusted input into SQL."),
     ("SHELL", "Shell execution enabled", "high", re.compile(r"shell\s*=\s*True"), "Avoid shell execution for untrusted input; pass explicit argument lists."),
 ]
 
