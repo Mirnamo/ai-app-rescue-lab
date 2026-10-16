@@ -40,3 +40,33 @@ def test_ignores_dependency_directories() -> None:
 def test_rejects_non_zip() -> None:
     with pytest.raises(ValueError, match="Invalid ZIP"):
         analyze_zip(b"not a zip", "sample")
+
+
+def test_flags_client_controlled_roles_and_interpolated_sql() -> None:
+    source = (
+        "def is_admin(headers):\n"
+        "    return headers.get('X-User-Role') == 'admin'\n"
+        "query = f\\"SELECT * FROM users WHERE email = '{email}'\\"\\n"
+    )
+    report = analyze_zip(make_archive({
+        "src/routes.py": source,
+        "src/routes.test.py": "assert True\n",
+    }), "sample")
+    auth = next(item for item in report["findings"] if item["id"].startswith("AUTH"))
+    sql = next(item for item in report["findings"] if item["id"].startswith("SQL"))
+    assert auth["path"] == "src/routes.py"
+    assert auth["line"] == 2
+    assert sql["path"] == "src/routes.py"
+    assert sql["line"] == 3
+
+
+def test_does_not_flag_trusted_roles_or_parameterized_sql() -> None:
+    report = analyze_zip(make_archive({
+        "src/safe.py": (
+            "def is_admin(current_user):\n"
+            "    return current_user.role == 'admin'\n"
+            "cursor.execute('SELECT * FROM users WHERE email = ?', (email,))\n"
+        ),
+        "src/safe.test.py": "assert True\n",
+    }), "sample")
+    assert not any(item["id"].startswith(("AUTH", "SQL")) for item in report["findings"])
