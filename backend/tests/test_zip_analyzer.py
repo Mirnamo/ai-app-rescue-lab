@@ -29,6 +29,22 @@ def test_rejects_traversal_path() -> None:
         analyze_zip(make_archive({"../escape.py": "print('x')"}), "sample")
 
 
+@pytest.mark.parametrize("path", ["src/.env", "config/.ENV.local", "deployment/prod.env", "vendor/.env"])
+def test_rejects_archives_with_environment_files(path: str) -> None:
+    with pytest.raises(ValueError, match="ZIP contains an environment file"):
+        analyze_zip(make_archive({"app.py": "print('x')", path: "KEY=placeholder"}), "sample")
+
+
+def test_flags_request_origins_copied_into_cors_response_headers() -> None:
+    report = analyze_zip(make_archive({
+        "app.js": '// CORS configuration\nres.setHeader("access-control-allow-origin", req.headers.origin);',
+        "app.py": '# CORS configuration\nresponse.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin")',
+        "fixed.js": 'res.setHeader("Access-Control-Allow-Origin", "https://app.example");',
+    }), "sample")
+    reflected = [item for item in report["findings"] if item["id"].startswith("CORS-REFLECT")]
+    assert [(item["path"], item["line"]) for item in reflected] == [("app.js", 2), ("app.py", 2)]
+
+
 def test_ignores_dependency_directories() -> None:
     report = analyze_zip(make_archive({
         "node_modules/lib/index.js": "eval(input())",

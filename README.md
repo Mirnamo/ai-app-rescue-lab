@@ -4,8 +4,10 @@
 
 The React app accepts source ZIP archives and offers two analysis modes:
 
-- **Python API:** Sends the ZIP to the configured FastAPI service. The service scans it in memory and does not persist the archive.
+- **Python API:** The browser builds a new ZIP without files named `.env`, `.env.*`, or `*.env` anywhere in the archive, regardless of capitalization, and sends that copy to the configured FastAPI service for analysis.
 - **Browser analysis:** Runs the limited static scanner in the visitor's browser; the ZIP stays on their device.
+
+The Python API also rejects ZIPs containing environment files before opening archive entries, including uploads sent directly to the API.
 
 Both modes report heuristic signals with file locations and remediation guidance. Findings require human review; this is not a security certification or complete vulnerability scanner. The app does not execute or automatically repair uploaded code.
 
@@ -33,7 +35,3 @@ npm run dev
 ```
 
 The API tests run with `cd backend && pytest`.
-
-## Original remediation case study
-
-The existing FastAPI service also provides the ticket and case-study endpoints used to demonstrate authorization, validation, error contracts, audit history, and testing. Demonstration identity headers are not production authentication.

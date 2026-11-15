@@ -14,6 +14,11 @@ RULES = [
     ("HTML", "Unsafe HTML rendering signal", "medium", re.compile(r"dangerouslySetInnerHTML|\.innerHTML\s*="), "Check the source of HTML and sanitize untrusted content before rendering."),
     ("DEBUG", "Debug mode enabled", "medium", re.compile(r"debug\s*[:=]\s*(?:true|True)\b"), "Disable debug mode in production configuration."),
     ("CORS", "Wildcard CORS policy", "medium", re.compile(r"""allow_origins\s*=\s*\[\s*['"]\*['"]|Access-Control-Allow-Origin['"]?\s*[:=]\s*['"]\*['"]""", re.I), "Review allowed origins and credential handling for sensitive endpoints."),
+    (
+        "CORS-REFLECT", "Possible CORS origin reflection", "medium",
+        re.compile(r"""\bAccess-Control-Allow-Origin['"]\s*(?:\]\s*=|[:,])\s*(?:req|request)\s*\.\s*(?:headers\s*(?:\.\s*origin\b|\[\s*['"]origin['"]\s*\]|\.\s*get\s*\(\s*['"]origin['"]\s*\))|(?:get|header)\s*\(\s*['"]origin['"]\s*\))""", re.I),
+        "Check the request Origin against an explicit allowlist before returning it in Access-Control-Allow-Origin. Review credentialed access on sensitive endpoints.",
+    ),
     ("SILENT", "Silent error handling signal", "medium", re.compile(r"catch\s*\([^)]*\)\s*\{\s*\}|except[^:\n]*:\s*pass\b|\.catch\s*\(\s*\(\)\s*=>\s*\[\]"), "Return actionable errors and log failures without exposing secrets."),
     ("AUTH", "Client-controlled authorization signal", "high", re.compile(r"""(?:\b(?:request|req)\.headers|\bheaders)\s*(?:\.\s*get\s*\(\s*|\[\s*)['"]x-(?:user-)?(?:role|admin)['"]|\b(?:request|req)\.(?:json|body|form|query_params)(?:\(\))?(?:\.\s*get\s*\(\s*|\[\s*)['"](?:role|is_admin|isAdmin|admin)['"]""", re.I), "Do not trust caller-supplied roles. Authenticate the user and enforce permissions server-side."),
     ("SQL", "Potentially unsafe SQL construction", "high", re.compile(r"""\b(?:select|insert|update|delete|replace)\b[^;\n]{0,500}(?:\{[A-Za-z_]\w*\}|\$\x7b[^}]+\}|\$[A-Za-z_]\w*|\+\s*(?:email|user_?input|input|request|req|params?|user_?id)\b|\.format\s*\()""", re.I), "Use parameterized queries or prepared statements; never interpolate untrusted input into SQL."),
@@ -39,6 +44,11 @@ def analyze_zip(data: bytes, project: str) -> dict:
     inventory: list[dict] = []
     expanded = 0
     try:
+        for info in infos:
+            name = PurePosixPath(info.filename.replace("\\", "/")).name.lower()
+            if not info.is_dir() and (name == ".env" or name.startswith(".env.") or name.endswith(".env")):
+                raise ValueError("ZIP contains an environment file. Remove .env files before using the Python scanner.")
+
         for info in infos:
             normalized = info.filename.replace("\\", "/")
             path = PurePosixPath(normalized)
