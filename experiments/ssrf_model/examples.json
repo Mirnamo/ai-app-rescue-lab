@@ -1,0 +1,72 @@
+{
+  "train": [
+    {
+      "id": "query-index",
+      "prefix": "from fastapi import FastAPI, Request\nimport requests\napp = FastAPI()\n@app.get(\"/preview\")\ndef preview(request: Request):",
+      "vulnerable": "    return requests.get(request.query_params[\"target\"])",
+      "fixed": "    return requests.get(\"https://example.com/preview\")"
+    },
+    {
+      "id": "route-parameter",
+      "prefix": "from fastapi import FastAPI, Request\nimport requests\napp = FastAPI()\n@app.get(\"/mirror\")\ndef mirror(destination: str):",
+      "vulnerable": "    return requests.get(destination)",
+      "fixed": "    return requests.get(\"https://example.com/mirror\")"
+    },
+    {
+      "id": "assigned-destination",
+      "prefix": "from fastapi import FastAPI, Request\nimport requests\napp = FastAPI()\n@app.post(\"/dispatch\")\ndef dispatch(url: str):",
+      "vulnerable": "    target = url\n    return requests.post(target)",
+      "fixed": "    target = \"https://example.com/dispatch\"\n    return requests.post(target)"
+    },
+    {
+      "id": "request-lookup",
+      "prefix": "from fastapi import FastAPI, Request\nimport requests\napp = FastAPI()\n@app.get(\"/show\")\ndef show(request: Request):",
+      "vulnerable": "    destination = request.query_params.get(\"destination\")\n    return requests.get(url=destination)",
+      "fixed": "    destination = \"https://example.com\"\n    return requests.get(url=destination)"
+    },
+    {
+      "id": "constructed-origin",
+      "prefix": "from fastapi import FastAPI, Request\nimport requests\napp = FastAPI()\n@app.get(\"/proxy\")\ndef proxy(host: str):",
+      "vulnerable": "    return requests.get(f\"https://{host}/status\")",
+      "fixed": "    return requests.get(f\"https://example.com/{1}\")"
+    },
+    {
+      "id": "alias-call",
+      "prefix": "from fastapi import FastAPI, Request\nimport requests\napp = FastAPI()\nfrom requests import request as send\n@app.get(\"/check\")\ndef check(url: str):",
+      "vulnerable": "    return send(\"GET\", url)",
+      "fixed": "    return send(\"GET\", \"https://example.com\")"
+    },
+    {
+      "id": "request-header",
+      "prefix": "from fastapi import FastAPI, Request\nimport requests\napp = FastAPI()\n@app.get(\"/header\")\ndef header(r: Request):",
+      "vulnerable": "    return requests.head(r.headers[\"destination\"])",
+      "fixed": "    return requests.head(\"https://example.com\")"
+    }
+  ],
+  "test": [
+    {
+      "id": "urllib-two-assignments",
+      "prefix": "from fastapi import FastAPI, Request\nimport requests\napp = FastAPI()\nfrom urllib.request import urlopen\n@app.get(\"/fetch\")\ndef fetch(request: Request):",
+      "vulnerable": "    raw = request.query_params[\"address\"]\n    dest = raw\n    return urlopen(dest)",
+      "fixed": "    raw = \"https://example.org\"\n    dest = raw\n    return urlopen(dest)"
+    },
+    {
+      "id": "httpx-post-keyword",
+      "prefix": "from fastapi import FastAPI, Request\nimport requests\napp = FastAPI()\nimport httpx as client\n@app.post(\"/send\")\nasync def send(target: str):",
+      "vulnerable": "    return client.post(url=target)",
+      "fixed": "    return client.post(url=\"https://example.org\")"
+    },
+    {
+      "id": "same-origin-path",
+      "prefix": "from fastapi import FastAPI, Request\nimport requests\napp = FastAPI()\n@app.get(\"/avatar\")\ndef avatar(user: str):",
+      "vulnerable": "    return requests.get(\"https://\" + user + \"/avatar\", allow_redirects=False)",
+      "fixed": "    return requests.get(\"https://example.org/avatar/\" + user, allow_redirects=False)"
+    },
+    {
+      "id": "helper-return",
+      "prefix": "from fastapi import FastAPI, Request\nimport requests\napp = FastAPI()\ndef destination(value):\n    return value\n@app.get(\"/link\")\ndef link(target: str):",
+      "vulnerable": "    return requests.get(destination(target))",
+      "fixed": "    return requests.get(\"https://example.org\")"
+    }
+  ]
+}
