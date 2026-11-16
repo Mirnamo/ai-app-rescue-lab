@@ -6,7 +6,15 @@ import "./styles.css";
 
 const API = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
 
+const THEME_STORAGE_KEY = "rescue-lab-theme";
 
+function getInitialTheme() {
+ try {
+  return window.localStorage.getItem(THEME_STORAGE_KEY) === "light" ? "light" : "dark";
+ } catch {
+  return "dark";
+ }
+}
 
 const CORS_REVIEW_OPTIONS = [
  ["yes", "Yes", "Recorded as intended access."],
@@ -39,9 +47,18 @@ function CorsOriginReview({ origins, onAnswer }) {
 function App(){
  const [report,setReport]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
  const [mode,setMode]=useState(API?"server":"browser");
+ const [theme, setTheme] = useState(getInitialTheme);
  const [sourceByPath, setSourceByPath] = useState(null);
  const worker=React.useRef(null);
  useEffect(()=>()=>worker.current?.terminate(),[]);
+ React.useLayoutEffect(() => {
+  document.documentElement.dataset.theme = theme;
+  try {
+   window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+   // The theme still works when browser storage is unavailable.
+  }
+ }, [theme]);
  async function upload(event){
   const file=event.target.files?.[0];event.target.value="";if(!file)return;
   setError("");setReport(null);setSourceByPath(null);
@@ -98,7 +115,14 @@ function App(){
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
  }
- return <main><nav><div className="brand"><span>AR</span><b>AI App Rescue Lab</b></div><a href="https://github.com/Mirnamo/ai-app-rescue-lab">GitHub ↗</a></nav>
+ return <main><nav><div className="brand"><span>AR</span><b>AI App Rescue Lab</b></div>
+ <div className="navright">
+  <label className="themeControl">Theme <select value={theme} onChange={event => setTheme(event.target.value)}>
+   <option value="light">Light</option>
+   <option value="dark">Dark</option>
+  </select></label>
+  <a href="https://github.com/Mirnamo/ai-app-rescue-lab">GitHub ↗</a>
+ </div></nav>
  <header><div><p>YOUR PROJECT / STATIC CODE REVIEW</p><h1>Find risks.<br/><em>Plan your rescue.</em></h1><div className="summary">Upload a source ZIP to identify common security and reliability signals with file locations and remediation guidance. {mode==="server"?"Your browser removes .env files from the ZIP before sending a copy to the Python API.":"Analysis runs locally in your browser; source code is not uploaded."}</div><label className="scanUpload">{busy?'Analyzing…':'Analyze your ZIP'}<input aria-label="Upload project ZIP" disabled={busy} type="file" accept=".zip" onChange={upload}/></label><p>15 MB ZIP · 40 MB expanded · 2,000 entries · 2 MB per file</p></div></header>
  <label>Analysis mode <select aria-label="Analysis mode" value={mode} disabled={busy} onChange={e=>setMode(e.target.value)}><option value="server" disabled={!API}>Python API{!API?" (not configured)":""}</option><option value="browser">Browser analysis</option></select></label><p>{mode==="server"?"ZIP contents are processed temporarily by the configured Python API and are not stored.":"ZIP contents stay in your browser."} Maximum upload: 15 MB.</p>\n {error&&<div className="error" role="alert">{error}</div>}{busy&&<div className="loading" role="status">{mode==="server"?"Preparing and analyzing ZIP…":"Reviewing source files…"}</div>}
  {report&&<><div className="reportHeader"><h2>{report.project}</h2><button type="button" onClick={downloadReport}>Download JSON report</button></div><section className="stats"><article><strong>{report.summary.files}</strong><span>Files reviewed</span></article><article><strong>{report.summary.lines}</strong><span>Lines reviewed</span></article><article><strong>{report.findings.length}</strong><span>Review signals</span></article><article><strong>{report.summary.high}</strong><span>High priority</span></article></section><p>{report.limitations}</p><CorsOriginReview origins={report.corsOrigins} onAnswer={answerCorsOrigin}/><section className="reportFindings">{report.findings.length?report.findings.map(f=><article className="panel" key={f.id}><span className={`severity ${f.severity}`}>{f.severity}</span><h3>{f.title}</h3><p>{f.path}{f.endLine > f.line ? ` · lines ${f.line}–${f.endLine}` : f.line ? ` · line ${f.line}` : ""}</p>
