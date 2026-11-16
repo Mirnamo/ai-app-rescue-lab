@@ -1,6 +1,6 @@
 # AI App Rescue Lab
 
-[Open the app](https://enchanting-babka-ebc245.netlify.app/) · [Project wiki](https://github.com/Mirnamo/ai-app-rescue-lab/wiki)
+[Open the app](https://ai-rescue-lab-app.netlify.app/) · [Project wiki](https://github.com/Mirnamo/ai-app-rescue-lab/wiki)
 
 ## Scan a source ZIP
 
