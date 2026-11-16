@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { prepareServerArchive } from "./prepare-upload";
 import { FindingSource } from "./finding-source";
+import { ReviewedFiles } from "./reviewed-files";
 import "./styles.css";
 
 const API = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
@@ -46,7 +47,7 @@ function CorsOriginReview({ origins, onAnswer }) {
 
 function App(){
  const [report,setReport]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
- const [mode,setMode]=useState(API?"server":"browser");
+ const [mode,setMode]=useState(() => API && new URLSearchParams(window.location.search).get('analysis') !== 'browser' ? 'server' : 'browser');
  const [theme, setTheme] = useState(getInitialTheme);
  const [sourceByPath, setSourceByPath] = useState(null);
  const worker=React.useRef(null);
@@ -59,6 +60,18 @@ function App(){
    // The theme still works when browser storage is unavailable.
   }
  }, [theme]);
+ function changeMode(event) {
+  const nextMode = event.target.value;
+  const url = new URL(window.location.href);
+  if (mode === 'server' && nextMode === 'browser') {
+   url.searchParams.set('analysis', 'browser');
+   window.location.replace(url);
+   return;
+  }
+  url.searchParams.delete('analysis');
+  window.history.replaceState(window.history.state, '', url);
+  setMode(nextMode);
+ }
  async function upload(event){
   const file=event.target.files?.[0];event.target.value="";if(!file)return;
   setError("");setReport(null);setSourceByPath(null);
@@ -133,7 +146,8 @@ function App(){
   <a href="https://github.com/Mirnamo/ai-app-rescue-lab">GitHub ↗</a>
  </div></nav>
  <header><div><h1>Find risks.<br/><em>Plan your rescue.</em></h1><div className="summary">Upload a source ZIP to identify common security and reliability signals with file locations and remediation guidance. {mode==="server"?"Your browser removes .env files from the ZIP before sending a copy to the Python API.":"Analysis runs locally in your browser; source code is not uploaded."}</div><label className="scanUpload">{busy?'Analyzing…':'Analyze your ZIP'}<input aria-label="Upload project ZIP" disabled={busy} type="file" accept=".zip" onChange={upload}/></label><p>15 MB ZIP · 40 MB expanded · 2,000 entries · 2 MB per file</p></div></header>
- <label>Analysis mode <select aria-label="Analysis mode" value={mode} disabled={busy} onChange={e=>setMode(e.target.value)}><option value="server" disabled={!API}>Python API{!API?" (not configured)":""}</option><option value="browser">Browser analysis</option></select></label><p>{mode==="server"?"ZIP contents are processed temporarily by the configured Python API and are not stored.":"ZIP contents stay in your browser."} Maximum upload: 15 MB.</p>\n {error&&<div className="error" role="alert">{error}</div>}{busy&&<div className="loading" role="status">{mode==="server"?"Preparing and analyzing ZIP…":"Reviewing source files…"}</div>}
+ <label>Analysis mode <select aria-label="Analysis mode" value={mode} disabled={busy} onChange={changeMode}><option value="server" disabled={!API}>Python API{!API?" (not configured)":""}</option><option value="browser">Browser analysis</option></select></label><p>{mode==="server"?"ZIP contents are processed temporarily by the configured Python API and are not stored.":"ZIP contents stay in your browser."} Maximum upload: 15 MB.</p>
+ {error&&<div className="error" role="alert">{error}</div>}{busy&&<div className="loading" role="status">{mode==="server"?"Preparing and analyzing ZIP…":"Reviewing source files…"}</div>}
  {report&&<><div className="reportHeader"><h2>{report.project}</h2><button type="button" onClick={downloadReport}>Download JSON report</button></div><dl className="reportSummary">
   <div><dt>Files reviewed</dt><dd>{report.summary.files}</dd></div>
   <div><dt>Lines reviewed</dt><dd>{report.summary.lines}</dd></div>
@@ -142,7 +156,7 @@ function App(){
  </dl>
  <p>{report.limitations}</p>
  <CorsOriginReview origins={report.corsOrigins} onAnswer={answerCorsOrigin}/>
- <details><summary>Reviewed files</summary>{report.files.map(f=><p key={f.path}>{f.path} · {f.lines} lines</p>)}</details>
+ <ReviewedFiles files={report.files} findings={report.findings}/>
  <FindingsTable findings={report.findings} sourceByPath={sourceByPath}/></>}
  <p>This tool does not run your app, verify authentication, or certify production readiness. Review findings before changing code.</p></main>
 }
