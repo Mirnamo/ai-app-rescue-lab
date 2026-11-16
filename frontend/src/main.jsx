@@ -55,7 +55,7 @@ function CorsOriginReview({ origins, onAnswer }) {
 
 function App(){
  const [report,setReport]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
- const [mode,setMode]=useState(() => API && new URLSearchParams(window.location.search).get('analysis') !== 'browser' ? 'server' : 'browser');
+ const mode = API && new URLSearchParams(window.location.search).get('analysis') !== 'browser' ? 'server' : 'browser';
  const [theme, setTheme] = useState(getInitialTheme);
  const [checkDependencies, setCheckDependencies] = useState(false);
  const [sourceByPath, setSourceByPath] = useState(null);
@@ -71,15 +71,14 @@ function App(){
  }, [theme]);
  function changeMode(event) {
   const nextMode = event.target.value;
+  if (nextMode === mode) return;
   const url = new URL(window.location.href);
-  if (mode === 'server' && nextMode === 'browser') {
+  if (nextMode === 'browser') {
    url.searchParams.set('analysis', 'browser');
-   window.location.replace(url);
-   return;
+  } else {
+   url.searchParams.delete('analysis');
   }
-  url.searchParams.delete('analysis');
-  window.history.replaceState(window.history.state, '', url);
-  setMode(nextMode);
+  window.location.replace(url);
  }
  async function upload(event){
   const file=event.target.files?.[0];event.target.value="";if(!file)return;
