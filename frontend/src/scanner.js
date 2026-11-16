@@ -1,5 +1,7 @@
 import { unzipSync } from 'fflate';
 const SKIP = /(^|\/)(node_modules|\.git|dist|build|vendor|\.venv)(\/|$)/;
+const CORS_SETTINGS = /\b(?:Access-Control-Allow-Origin['"]?\s*(?:\]\s*=|[:,])|(?:allow_origins|allowed_origins|allowedOrigins)['"]?\s*[:=])\s*(\[\s*(?:['"][^'"\r\n]*['"]\s*,\s*)*['"][^'"\r\n]*['"]\s*,?\s*\]|['"][^'"\r\n]*['"])/gi;
+const CORS_ORIGIN = /['"](https?:\/\/(?:[a-z0-9.-]+|\[[0-9a-f:]+\])(?::[0-9]{1,5})?)['"]/gi;
 const RULES = [
  ['SECRET','Possible hardcoded credential','high',/(?:api[_-]?key|secret|password|access[_-]?token)\s*[:=]\s*['"][^'"\n]{8,}['"]/i,'Move credentials to server-side environment variables; rotate any exposed real credentials.'],
  ['EVAL','Dynamic code execution','high',/\b(?:eval|exec)\s*\(/,'Avoid executing dynamic input; use explicit parsing and allowlisted operations.'],
@@ -12,7 +14,7 @@ const RULES = [
  ['SQL','Potentially unsafe SQL construction','high',/\b(?:select|insert|update|delete|replace)\b[^;\n]{0,500}(?:\{[A-Za-z_]\w*\}|\$\x7b[^}]+\}|\$[A-Za-z_]\w*|\+\s*(?:email|user_?input|input|request|req|params?|user_?id)\b|\.format\s*\()/i,'Use parameterized queries or prepared statements; never interpolate untrusted input into SQL.'],
  ['SHELL','Shell execution enabled','high',/shell\s*=\s*True/,'Avoid shell execution for untrusted input; pass explicit argument lists.']
 ];
-export function scanArchive(buffer, project) {
+export function scanArchive(buffer, project, sourceByPath) {
  const bytes=new Uint8Array(buffer);
  if(bytes.length>15*1024*1024) throw Error('ZIP exceeds the 15 MB limit.');
  let count=0,total=0;
@@ -24,19 +26,28 @@ export function scanArchive(buffer, project) {
   if(total>40*1024*1024 || f.originalSize>2*1024*1024) throw Error('Archive exceeds expanded size limits (40 MB total, 2 MB per file).');
   return !SKIP.test(path)&&!path.endsWith('/')&&/\.(js|jsx|ts|tsx|py|php|java|rb|go|json|ya?ml|toml|env|sql|html|css|md|txt)$|(^|\/)Dockerfile$|(^|\/)\.env$/.test(path);
  }});
- const findings=[],inventory=[];
+ const findings=[],inventory=[],corsOrigins=[];
  for(const [path,data] of Object.entries(files)) {
   if(data.includes(0)) continue;
-  const source=new TextDecoder().decode(data),lines=source.split('\n');
+  const source=new TextDecoder().decode(data).replace(/\r\n?/g, '\n'),lines=source.split('\n');
   inventory.push({path,lines:lines.length});
+  for (const setting of source.matchAll(CORS_SETTINGS)) {
+   for (const match of setting[1].matchAll(CORS_ORIGIN)) {
+    const offset = setting.index + setting[0].length - setting[1].length + match.index;
+    corsOrigins.push({origin: match[1], path, line: source.slice(0, offset).split('\n').length});
+   }
+  }
   for(const [rule,title,severity,pattern,remediation] of RULES) {
    const match=pattern.exec(source); if(!match) continue;
-   findings.push({id:`${rule}-${findings.length+1}`,title,severity,path,line:source.slice(0,match.index).split('\n').length,remediation,status:'Needs review'});
+   const line = source.slice(0, match.index).split('\n').length;
+   const endLine = line + match[0].split('\n').length - 1;
+   findings.push({id:`${rule}-${findings.length+1}`,title,severity,path,line,endLine,remediation,status:'Needs review'});
+   sourceByPath?.set(path, source);
   }
   if(lines.length>500) findings.push({id:`SIZE-${findings.length+1}`,title:'Large file maintenance signal',severity:'low',path,line:1,remediation:'Review responsibilities and split cohesive modules where appropriate.',status:'Needs review'});
  }
  if(!inventory.length) throw Error('No supported text source files found in this ZIP.');
  if(!inventory.some(f=>/(test|spec)/i.test(f.path))) findings.push({id:'TEST-REVIEW',title:'No test files identified',severity:'medium',path:'Project',line:null,remediation:'Confirm tests exist outside the archive or add tests for authentication, validation, and error paths.',status:'Needs review'});
  findings.sort((a,b)=>['high','medium','low'].indexOf(a.severity)-['high','medium','low'].indexOf(b.severity));
- return {project,files:inventory,findings,summary:{files:inventory.length,lines:inventory.reduce((n,f)=>n+f.lines,0),high:findings.filter(f=>f.severity==='high').length},limitations:'Static heuristic review only. Signals may be false positives and absence of findings does not establish security. Code is not executed or automatically repaired. Review authentication, business logic, dependencies, and runtime behavior separately.'};
+ return {project,files:inventory,findings,corsOrigins,summary:{files:inventory.length,lines:inventory.reduce((n,f)=>n+f.lines,0),high:findings.filter(f=>f.severity==='high').length},limitations:'Static heuristic review only. Signals may be false positives and absence of findings does not establish security. Code is not executed or automatically repaired. Review authentication, business logic, dependencies, and runtime behavior separately.'};
 }

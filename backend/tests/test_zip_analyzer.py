@@ -24,6 +24,21 @@ def test_reports_credential_signal_with_line_number() -> None:
     assert report["summary"]["high"] == 1
 
 
+def test_lists_explicit_cors_origins_and_their_locations_for_review() -> None:
+    report = analyze_zip(make_archive({
+        "app.py": 'allow_origins = [\n  "https://shop.example",\n  "http://[::1]:5173",\n]',
+        "app.js": 'res.setHeader("Access-Control-Allow-Origin", "https://partner.example");',
+        "other.js": 'const url = "https://unrelated.example";',
+        "wildcard.py": 'allow_origins = ["*"]',
+        "userinfo.py": 'allow_origins = ["https://user:secret@shop.example"]',
+    }), "sample")
+    assert report["corsOrigins"] == [
+        {"origin": "https://shop.example", "path": "app.py", "line": 2},
+        {"origin": "http://[::1]:5173", "path": "app.py", "line": 3},
+        {"origin": "https://partner.example", "path": "app.js", "line": 1},
+    ]
+
+
 def test_rejects_traversal_path() -> None:
     with pytest.raises(ValueError, match="Unsafe archive path"):
         analyze_zip(make_archive({"../escape.py": "print('x')"}), "sample")

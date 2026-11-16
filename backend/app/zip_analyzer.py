@@ -7,6 +7,10 @@ import zipfile
 from pathlib import PurePosixPath
 
 SKIP_PARTS = {"node_modules", ".git", "dist", "build", "vendor", ".venv"}
+CORS_SETTINGS = re.compile(
+    r"""\b(?:Access-Control-Allow-Origin['"]?\s*(?:\]\s*=|[:,])|(?:allow_origins|allowed_origins|allowedOrigins)['"]?\s*[:=])\s*(\[\s*(?:['"][^'"\r\n]*['"]\s*,\s*)*['"][^'"\r\n]*['"]\s*,?\s*\]|['"][^'"\r\n]*['"])""", re.I | re.ASCII
+)
+CORS_ORIGIN = re.compile(r"""['"](https?://(?:[a-z0-9.-]+|\[[0-9a-f:]+\])(?::[0-9]{1,5})?)['"]""", re.I | re.ASCII)
 SUPPORTED = re.compile(r"\.(js|jsx|ts|tsx|py|php|java|rb|go|json|ya?ml|toml|env|sql|html|css|md|txt)$|(^|/)Dockerfile$|(^|/)\.env$", re.I)
 RULES = [
     ("SECRET", "Possible hardcoded credential", "high", re.compile(r"""(?:api[_-]?key|secret|password|access[_-]?token)\s*[:=]\s*['"][^'"\n]{8,}['"]""", re.I), "Move credentials to server-side environment variables; rotate any exposed real credentials."),
@@ -42,6 +46,7 @@ def analyze_zip(data: bytes, project: str) -> dict:
 
     findings: list[dict] = []
     inventory: list[dict] = []
+    cors_origins: list[dict] = []
     expanded = 0
     try:
         for info in infos:
@@ -79,6 +84,14 @@ def analyze_zip(data: bytes, project: str) -> dict:
             source = raw.decode("utf-8", errors="replace")
             lines = source.split("\n")
             inventory.append({"path": normalized, "lines": len(lines)})
+            for setting in CORS_SETTINGS.finditer(source):
+                for match in CORS_ORIGIN.finditer(setting[1]):
+                    offset = setting.start(1) + match.start()
+                    cors_origins.append({
+                        "origin": match[1],
+                        "path": normalized,
+                        "line": source.count("\n", 0, offset) + 1,
+                    })
             for rule, title, severity, pattern, remediation in RULES:
                 match = pattern.search(source)
                 if match:
@@ -98,6 +111,7 @@ def analyze_zip(data: bytes, project: str) -> dict:
         "project": project,
         "files": inventory,
         "findings": findings,
+        "corsOrigins": cors_origins,
         "summary": {"files": len(inventory), "lines": sum(item["lines"] for item in inventory), "high": sum(item["severity"] == "high" for item in findings)},
         "limitations": "Static heuristic review only. Signals may be false positives and absence of findings does not establish security. Code is not executed or automatically repaired. Review authentication, business logic, dependencies, and runtime behavior separately.",
     }

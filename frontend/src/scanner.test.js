@@ -4,6 +4,35 @@ import {zipSync,strToU8} from 'fflate';
 import {scanArchive} from './scanner.js';
 const zip=files=>zipSync(Object.fromEntries(Object.entries(files).map(([p,s])=>[p,strToU8(s)]))).buffer;
 
+test('supplies local source and the full line range for a multiline match', () => {
+  const sourceByPath = new Map();
+  const source = '// before\ncatch (error) {\n}\n// after';
+  const report = scanArchive(zip({
+    'app.js': source.replaceAll('\n', '\r\n'),
+    'app.test.js': 'test("valid", () => {});',
+  }), 'demo', sourceByPath);
+
+  const match = report.findings.find(({ id }) => id.startsWith('SILENT-'));
+  assert.deepEqual([match.line, match.endLine], [2, 3]);
+  assert.deepEqual([...sourceByPath], [['app.js', source]]);
+  assert.ok(!JSON.stringify(report).includes('// before'));
+});
+
+test('lists explicit CORS origins and their locations for review', () => {
+  const report = scanArchive(zip({
+    'app.py': 'allow_origins = [\n  "https://shop.example",\n  "http://[::1]:5173",\n]',
+    'app.js': 'res.setHeader("Access-Control-Allow-Origin", "https://partner.example");',
+    'other.js': 'const url = "https://unrelated.example";',
+    'wildcard.py': 'allow_origins = ["*"]',
+    'userinfo.py': 'allow_origins = ["https://user:secret@shop.example"]',
+  }), 'demo');
+  assert.deepEqual(report.corsOrigins, [
+    { origin: 'https://shop.example', path: 'app.py', line: 2 },
+    { origin: 'http://[::1]:5173', path: 'app.py', line: 3 },
+    { origin: 'https://partner.example', path: 'app.js', line: 1 },
+  ]);
+});
+
 test('flags request origins copied into CORS response headers', () => {
   const report = scanArchive(zip({
     'app.js': '// CORS configuration\nres.setHeader("access-control-allow-origin", req.headers.origin);',
