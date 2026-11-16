@@ -6,12 +6,16 @@ import stat
 import zipfile
 from pathlib import PurePosixPath
 
+from .dependency_scan import collect_dependencies, scan_dependencies
+
 SKIP_PARTS = {"node_modules", ".git", "dist", "build", "vendor", ".venv"}
 CORS_SETTINGS = re.compile(
     r"""\b(?:Access-Control-Allow-Origin['"]?\s*(?:\]\s*=|[:,])|(?:allow_origins|allowed_origins|allowedOrigins)['"]?\s*[:=])\s*(\[\s*(?:['"][^'"\r\n]*['"]\s*,\s*)*['"][^'"\r\n]*['"]\s*,?\s*\]|['"][^'"\r\n]*['"])""", re.I | re.ASCII
 )
 CORS_ORIGIN = re.compile(r"""['"](https?://(?:[a-z0-9.-]+|\[[0-9a-f:]+\])(?::[0-9]{1,5})?)['"]""", re.I | re.ASCII)
 SUPPORTED = re.compile(r"\.(js|jsx|ts|tsx|py|php|java|rb|go|json|ya?ml|toml|env|sql|html|css|md|txt)$|(^|/)Dockerfile$|(^|/)\.env$", re.I)
+WEBHOOK_VERIFICATION = re.compile(r"\b(?:constructEvent(?:Async)?|construct_event|verify_signature|verifySignature|verify_webhook(?:_signature)?|verifyWebhook(?:Signature)?|timingSafeEqual|compare_digest)\s*\(")
+ROUTE_DECLARATION = re.compile(r"""\b(?:app|router|bp|blueprint)\.(?:get|post|put|patch|delete|route)\s*\(\s*['"]""", re.I)
 RULES = [
     ("SECRET", "Possible hardcoded credential", "high", re.compile(r"""(?:api[_-]?key|secret|password|access[_-]?token)\s*[:=]\s*['"][^'"\n]{8,}['"]""", re.I), "Move credentials to server-side environment variables; rotate any exposed real credentials."),
     ("EVAL", "Dynamic code execution", "high", re.compile(r"\b(?:eval|exec)\s*\("), "Avoid executing dynamic input; use explicit parsing and allowlisted operations."),
@@ -27,10 +31,15 @@ RULES = [
     ("AUTH", "Client-controlled authorization signal", "high", re.compile(r"""(?:\b(?:request|req)\.headers|\bheaders)\s*(?:\.\s*get\s*\(\s*|\[\s*)['"]x-(?:user-)?(?:role|admin)['"]|\b(?:request|req)\.(?:json|body|form|query_params)(?:\(\))?(?:\.\s*get\s*\(\s*|\[\s*)['"](?:role|is_admin|isAdmin|admin)['"]""", re.I), "Do not trust caller-supplied roles. Authenticate the user and enforce permissions server-side."),
     ("SQL", "Potentially unsafe SQL construction", "high", re.compile(r"""\b(?:select|insert|update|delete|replace)\b[^;\n]{0,500}(?:\{[A-Za-z_]\w*\}|\$\x7b[^}]+\}|\$[A-Za-z_]\w*|\+\s*(?:email|user_?input|input|request|req|params?|user_?id)\b|\.format\s*\()""", re.I), "Use parameterized queries or prepared statements; never interpolate untrusted input into SQL."),
     ("SHELL", "Shell execution enabled", "high", re.compile(r"shell\s*=\s*True"), "Avoid shell execution for untrusted input; pass explicit argument lists."),
+    ("TLS-VERIFY", "TLS certificate verification disabled", "high", re.compile(r"""\b(?:(?:requests|httpx)\.(?:get|post|put|patch|delete|head|request|Client|AsyncClient)\s*\([^()]{0,500}\bverify\s*=\s*False\b|rejectUnauthorized\s*:\s*false\b|NODE_TLS_REJECT_UNAUTHORIZED\s*[:=]\s*['"]?0\b|ssl\._create_unverified_context\s*\()"""), "Enable certificate verification and configure a trusted CA for private services."),
+    ("SECRET-LOG", "Possible sensitive data written to logs", "high", re.compile(r"""\b(?:console\.(?:log|info|debug|warn|error)|(?:logger|logging|log)\.(?:debug|info|warning|warn|error|exception|critical))\s*\((?:"[^"\n]*"|'[^'\n]*'|[^'");\n]){0,300}?(?:\b(?:password|access[_-]?token|api[_-]?key|session[_-]?cookie)\b|\bheaders\s*(?:\.\s*authorization\b|\[\s*['"](?:authorization|cookie)['"]|\.\s*get\s*\(\s*['"](?:authorization|cookie)['"]))"""), "Remove credentials and session data from log arguments or redact them before logging."),
+    ("DESERIALIZE", "Potentially unsafe deserialization", "high", re.compile(r"""\b(?:(?:pickle|cPickle|dill|cloudpickle)\.loads?\s*\(|yaml\.unsafe_load\s*\(|yaml\.load\s*\([^)\n]{0,400}\bLoader\s*=\s*yaml\.(?:UnsafeLoader|Loader)\b|unserialize\s*\(\s*\$_(?:POST|GET|REQUEST)\b)"""), "Use a data-only format and validate its schema when reading request or upload content."),
+    ("SSRF", "Possible user-controlled outbound request", "high", re.compile(r"""\b(?:fetch|(?:requests|httpx|axios)\.(?:get|post|put|patch|delete|head)|(?:urllib\.request\.)?urlopen)\s*\(\s*(?:req|request)\s*\.\s*(?:query|query_params|body|form|params|json)(?:\s*\(\s*\))?\s*(?:\.\s*(?:url|target|destination|callbackUrl)\b|\[\s*['"](?:url|target|destination|callbackUrl)['"]\s*\]|\.\s*get\s*\(\s*['"](?:url|target|destination|callbackUrl)['"]\s*\))"""), "Validate destinations against an explicit allowlist and enforce the policy after DNS resolution and redirects."),
+    ("WEBHOOK-SIGNATURE", "Webhook signature verification needs review", "medium", re.compile(r"""\b(?:app|router|bp|blueprint)\.(?:post|route)\s*\(\s*['"][^'"\r\n]*webhooks?[^'"\r\n]*['"]""", re.I), "Verify the provider signature over the raw request body before processing the event. Check route middleware and replay protection."),
 ]
 
 
-def analyze_zip(data: bytes, project: str) -> dict:
+def analyze_zip(data: bytes, project: str, check_dependencies: bool = False) -> dict:
     if len(data) > 15 * 1024 * 1024:
         raise ValueError("ZIP exceeds the 15 MB limit.")
     try:
@@ -47,6 +56,7 @@ def analyze_zip(data: bytes, project: str) -> dict:
     findings: list[dict] = []
     inventory: list[dict] = []
     cors_origins: list[dict] = []
+    packages: dict = {}
     expanded = 0
     try:
         for info in infos:
@@ -84,6 +94,8 @@ def analyze_zip(data: bytes, project: str) -> dict:
             source = raw.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
             lines = source.split("\n")
             inventory.append({"path": normalized, "lines": len(lines)})
+            if check_dependencies:
+                collect_dependencies(source, normalized, packages)
             for setting in CORS_SETTINGS.finditer(source):
                 for match in CORS_ORIGIN.finditer(setting[1]):
                     offset = setting.start(1) + match.start()
@@ -94,6 +106,13 @@ def analyze_zip(data: bytes, project: str) -> dict:
                     })
             for rule, title, severity, pattern, remediation in RULES:
                 match = pattern.search(source)
+                if rule == "WEBHOOK-SIGNATURE":
+                    while match:
+                        next_route = ROUTE_DECLARATION.search(source, match.end())
+                        end = min(next_route.start() if next_route else len(source), match.end() + 5000)
+                        if not WEBHOOK_VERIFICATION.search(source, match.end(), end):
+                            break
+                        match = pattern.search(source, end)
                 if match:
                     line = source.count("\n", 0, match.start()) + 1
                     findings.append({
@@ -115,13 +134,16 @@ def analyze_zip(data: bytes, project: str) -> dict:
         raise ValueError("No supported text source files found in this ZIP.")
     if not any(re.search(r"(test|spec)", item["path"], re.I) for item in inventory):
         findings.append({"id": "TEST-REVIEW", "title": "No test files identified", "severity": "medium", "path": "Project", "line": None, "remediation": "Confirm tests exist outside the archive or add tests for authentication, validation, and error paths.", "status": "Needs review"})
-    rank = {"high": 0, "medium": 1, "low": 2}
-    findings.sort(key=lambda item: rank[item["severity"]])
-    return {
+    report = {
         "project": project,
         "files": inventory,
         "findings": findings,
         "corsOrigins": cors_origins,
         "summary": {"files": len(inventory), "lines": sum(item["lines"] for item in inventory), "high": sum(item["severity"] == "high" for item in findings)},
-        "limitations": "Static heuristic review only. Signals may be false positives and absence of findings does not establish security. Code is not executed or automatically repaired. Review authentication, business logic, dependencies, and runtime behavior separately.",
+        "limitations": "Static review only. Code patterns may produce false positives. Dependency results cover known advisories for checked versions. Review authentication, business logic, and runtime behavior separately.",
     }
+    if check_dependencies:
+        scan_dependencies(report, packages)
+    rank = {"high": 0, "medium": 1, "low": 2}
+    findings.sort(key=lambda item: rank[item["severity"]])
+    return report

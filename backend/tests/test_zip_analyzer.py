@@ -1,11 +1,66 @@
 from __future__ import annotations
 
 import io
+import json
 import zipfile
 
 import pytest
 
 from app.zip_analyzer import analyze_zip
+
+
+def test_reports_new_source_patterns_with_locations() -> None:
+    report = analyze_zip(make_archive({
+        "network.py": 'response = requests.get(\n    target, verify=False\n)\nhttpx.get(request.query_params["url"])',
+        "logs.js": 'console.info("password changed");\nconsole.info("headers", req.headers.authorization);',
+        "payload.py": "yaml.safe_load(body)\npickle.loads(body)",
+        "webhooks.js": 'app.post("/webhooks/safe", (req) => stripe.webhooks.constructEvent(req.rawBody, sig, secret));\napp.post("/webhooks/unsafe", (req) => processEvent(req.body));',
+        "safe.py": 'requests.get(url, verify=True)\nhttpx.get("https://example.com")',
+    }), "demo")
+
+    assert sorted(
+        (item["id"].rsplit("-", 1)[0], item["path"], item["line"])
+        for item in report["findings"] if item["id"] != "TEST-REVIEW"
+    ) == [
+        ("DESERIALIZE", "payload.py", 2),
+        ("SECRET-LOG", "logs.js", 2),
+        ("SSRF", "network.py", 4),
+        ("TLS-VERIFY", "network.py", 1),
+        ("WEBHOOK-SIGNATURE", "webhooks.js", 2),
+    ]
+
+
+def test_reports_dependency_advisories_and_keeps_source_findings_when_unavailable(monkeypatch) -> None:
+    archive = make_archive({
+        "package-lock.json": json.dumps({"packages": {
+            "": {"name": "private-project", "version": "1.0.0"},
+            "node_modules/lodash": {"version": "4.17.20", "resolved": "https://private.example/archive"},
+        }}),
+        "backend/requirements.txt": "Jinja2==2.4.1\nrequests>=2.0\nprivate @ https://private.example/archive",
+        "app.js": "eval(input);",
+    })
+
+    def query(queries):
+        assert queries == [
+            {"package": {"ecosystem": "npm", "name": "lodash"}, "version": "4.17.20"},
+            {"package": {"ecosystem": "PyPI", "name": "jinja2"}, "version": "2.4.1"},
+        ]
+        return [{"vulns": [{"id": "CVE-2021-23337"}]}, {}]
+
+    monkeypatch.setattr("app.dependency_scan.query_osv", query)
+    assert "dependencyScan" not in analyze_zip(archive, "demo")
+    report = analyze_zip(archive, "demo", check_dependencies=True)
+    assert report["dependencyScan"] == {"status": "complete", "checked": 2}
+    dependency = next(item for item in report["findings"] if item["id"].startswith("DEPENDENCY-"))
+    assert dependency["advisories"] == ["CVE-2021-23337"]
+
+    def fail(_queries):
+        raise OSError("offline")
+
+    monkeypatch.setattr("app.dependency_scan.query_osv", fail)
+    report = analyze_zip(archive, "demo", check_dependencies=True)
+    assert report["dependencyScan"] == {"status": "unavailable", "checked": 0}
+    assert any(item["id"].startswith("EVAL-") for item in report["findings"])
 
 
 def make_archive(files: dict[str, str]) -> bytes:

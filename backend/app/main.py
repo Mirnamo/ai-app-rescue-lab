@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import os
 from uuid import uuid4
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -39,7 +40,7 @@ def health() -> dict[str, str]:
 
 
 @app.post("/api/analyze")
-async def analyze_project(file: UploadFile = File(...)) -> dict:
+async def analyze_project(file: UploadFile = File(...), check_dependencies: bool = Form(False)) -> dict:
     if not file.filename or not file.filename.lower().endswith(".zip"):
         raise HTTPException(status_code=415, detail="Upload a ZIP archive")
     try:
@@ -48,7 +49,7 @@ async def analyze_project(file: UploadFile = File(...)) -> dict:
             raise HTTPException(status_code=413, detail="ZIP exceeds the 15 MB limit.")
         filename = file.filename.rsplit("/", 1)[-1].rsplit(chr(92), 1)[-1]
         project = filename[:-4] if filename.lower().endswith(".zip") else filename
-        return analyze_zip(data, project)
+        return await run_in_threadpool(analyze_zip, data, project, check_dependencies)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     finally:

@@ -23,6 +23,14 @@ const CORS_REVIEW_OPTIONS = [
  ["unsure", "I’m not sure", "Check with the project owner before keeping this access."],
 ];
 
+function DependencyScanStatus({ scan }) {
+ if (!scan) return null;
+ if (scan.status === 'unavailable') return <p>Dependency advisories could not be checked. Source findings are available below.</p>;
+ if (scan.status === 'no-packages') return <p>No supported dependency versions found. Include a modern package-lock.json or pinned requirements.txt.</p>;
+ if (scan.status === 'partial') return <p>Dependency check incomplete. Checked {scan.checked} package versions and received partial results.</p>;
+ return <p>Checked {scan.checked} package versions for known vulnerabilities.</p>;
+}
+
 function CorsOriginReview({ origins, onAnswer }) {
  if (!origins?.length) return null;
  return <section className="corsReview">
@@ -49,6 +57,7 @@ function App(){
  const [report,setReport]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
  const [mode,setMode]=useState(() => API && new URLSearchParams(window.location.search).get('analysis') !== 'browser' ? 'server' : 'browser');
  const [theme, setTheme] = useState(getInitialTheme);
+ const [checkDependencies, setCheckDependencies] = useState(false);
  const [sourceByPath, setSourceByPath] = useState(null);
  const worker=React.useRef(null);
  useEffect(()=>()=>worker.current?.terminate(),[]);
@@ -83,6 +92,7 @@ function App(){
     const { upload: archive, files } = prepareServerArchive(await file.arrayBuffer());
     const form = new FormData();
     form.append("file", new Blob([archive], {type: "application/zip"}), file.name);
+    if (checkDependencies) form.append("check_dependencies", "true");
     const response=await fetch(`${API}/api/analyze`,{method:"POST",body:form,signal:AbortSignal.timeout(120000)});
     const body=await response.json();
     if(!response.ok)throw new Error(typeof body.detail==="string"?body.detail:"Analysis failed");
@@ -115,7 +125,7 @@ function App(){
     w.terminate();
    };
    w.onerror=()=>{clearTimeout(timeout);setBusy(false);setError('Analysis failed. Try a smaller source archive.');w.terminate();};
-   w.postMessage({buffer,name:file.name.replace(/\.zip$/i,'')},[buffer]);
+   w.postMessage({buffer,name:file.name.replace(/\.zip$/i,''),checkDependencies},[buffer]);
   }catch(e){setBusy(false);setError(e.message);}
  }
  function answerCorsOrigin(index, answer) {
@@ -147,6 +157,8 @@ function App(){
  </div></nav>
  <header><div><h1>Find risks.<br/><em>Plan your rescue.</em></h1><div className="summary">Upload a source ZIP to identify common security and reliability signals with file locations and remediation guidance. {mode==="server"?"Your browser removes .env files from the ZIP before sending a copy to the Python API.":"Analysis runs locally in your browser; source code is not uploaded."}</div><label className="scanUpload">{busy?'Analyzing…':'Analyze your ZIP'}<input aria-label="Upload project ZIP" disabled={busy} type="file" accept=".zip" onChange={upload}/></label><p>15 MB ZIP · 40 MB expanded · 2,000 entries · 2 MB per file</p></div></header>
  <label>Analysis mode <select aria-label="Analysis mode" value={mode} disabled={busy} onChange={changeMode}><option value="server" disabled={!API}>Python API{!API?" (not configured)":""}</option><option value="browser">Browser analysis</option></select></label><p>{mode==="server"?"ZIP contents are processed temporarily by the configured Python API and are not stored.":"ZIP contents stay in your browser."} Maximum upload: 15 MB.</p>
+ <label><input type="checkbox" checked={checkDependencies} disabled={busy} onChange={event => setCheckDependencies(event.target.checked)}/> Check dependencies for known vulnerabilities</label>
+ <p>This sends package names and versions to OSV.dev.</p>
  {error&&<div className="error" role="alert">{error}</div>}{busy&&<div className="loading" role="status">{mode==="server"?"Preparing and analyzing ZIP…":"Reviewing source files…"}</div>}
  {report&&<><div className="reportHeader"><h2>{report.project}</h2><button type="button" onClick={downloadReport}>Download JSON report</button></div><dl className="reportSummary">
   <div><dt>Files reviewed</dt><dd>{report.summary.files}</dd></div>
@@ -155,6 +167,7 @@ function App(){
   <div><dt>High priority</dt><dd>{report.summary.high}</dd></div>
  </dl>
  <p>{report.limitations}</p>
+ <DependencyScanStatus scan={report.dependencyScan}/>
  <CorsOriginReview origins={report.corsOrigins} onAnswer={answerCorsOrigin}/>
  <ReviewedFiles files={report.files} findings={report.findings}/>
  <FindingsTable findings={report.findings} sourceByPath={sourceByPath}/></>}
@@ -185,7 +198,11 @@ function FindingsTable({ findings, sourceByPath }) {
        <FindingSource source={sourceByPath.get(finding.path)} path={finding.path} line={finding.line} endLine={finding.endLine}/>
       )}
      </td>
-     <td>{finding.remediation}</td>
+     <td>{finding.remediation}
+      {finding.advisories?.length > 0 && <ul>{finding.advisories.map(id => (
+       <li key={id}><a href={`https://osv.dev/vulnerability/${encodeURIComponent(id)}`}>{id}</a></li>
+      ))}</ul>}
+     </td>
     </tr>)}
    </tbody>
   </table>

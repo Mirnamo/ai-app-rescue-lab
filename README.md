@@ -11,6 +11,10 @@ The Python API also rejects ZIPs containing environment files before opening arc
 
 Both modes report heuristic signals with file locations and remediation guidance. Findings require human review; this is not a security certification or complete vulnerability scanner. The app does not execute or automatically repair uploaded code.
 
+Both modes also flag disabled TLS certificate checks, possible secrets in log calls, unsafe deserialization, direct request input used as an outbound URL, and recognizable webhook routes without a recognizable signature verification call. These source checks cover common Python and JavaScript patterns. For webhook findings, check route middleware and shared helpers.
+
+Enable **Check dependencies for known vulnerabilities** to query OSV.dev. Both modes extract package names and versions from modern npm `package-lock.json` files with a `packages` section and exact `==` pins in `requirements.txt`. OSV receives package names, versions, and ecosystems. The scan checks up to 500 unique package versions per upload and reports partial coverage or service failures alongside the source results.
+
 Rules flag possible hardcoded credentials (without displaying their values), dynamic execution, unsafe HTML rendering, debug mode, wildcard CORS, silent error handling, shell execution, client-controlled authorization signals, potentially unsafe SQL construction, large files, and missing test-file signals. Limits: 15 MB compressed, 40 MB expanded, 2 MB per supported file, and 2,000 entries. Generated/dependency folders and binary files are skipped. Unsafe archive paths and symlinks are rejected.
 
 ### Deploy the frontend and connect the Python API
