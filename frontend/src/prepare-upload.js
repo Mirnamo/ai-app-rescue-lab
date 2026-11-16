@@ -30,5 +30,5 @@ export function prepareServerArchive(buffer) {
   if (!Object.keys(files).length) throw new Error('No files remain eligible for upload.');
   const upload = zipSync(files);
   if (upload.length > MAX_UPLOAD_BYTES) throw new Error('Prepared ZIP exceeds the 15 MB upload limit.');
-  return upload;
+  return { upload, files };
 }

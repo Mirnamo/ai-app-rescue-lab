@@ -81,7 +81,7 @@ def analyze_zip(data: bytes, project: str) -> dict:
                 raise ValueError("Could not read a file in this ZIP archive.") from exc
             if b"\0" in raw:
                 continue
-            source = raw.decode("utf-8", errors="replace")
+            source = raw.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
             lines = source.split("\n")
             inventory.append({"path": normalized, "lines": len(lines)})
             for setting in CORS_SETTINGS.finditer(source):
@@ -95,7 +95,17 @@ def analyze_zip(data: bytes, project: str) -> dict:
             for rule, title, severity, pattern, remediation in RULES:
                 match = pattern.search(source)
                 if match:
-                    findings.append({"id": f"{rule}-{len(findings) + 1}", "title": title, "severity": severity, "path": normalized, "line": source.count("\n", 0, match.start()) + 1, "remediation": remediation, "status": "Needs review"})
+                    line = source.count("\n", 0, match.start()) + 1
+                    findings.append({
+                        "id": f"{rule}-{len(findings) + 1}",
+                        "title": title,
+                        "severity": severity,
+                        "path": normalized,
+                        "line": line,
+                        "endLine": line + match[0].count("\n"),
+                        "remediation": remediation,
+                        "status": "Needs review",
+                    })
             if len(lines) > 500:
                 findings.append({"id": f"SIZE-{len(findings) + 1}", "title": "Large file maintenance signal", "severity": "low", "path": normalized, "line": 1, "remediation": "Review responsibilities and split cohesive modules where appropriate.", "status": "Needs review"})
     finally:

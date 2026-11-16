@@ -67,12 +67,21 @@ function App(){
   setBusy(true);
   if(mode==="server"){
    try{
-    const archive = prepareServerArchive(await file.arrayBuffer());
+    const { upload: archive, files } = prepareServerArchive(await file.arrayBuffer());
     const form = new FormData();
     form.append("file", new Blob([archive], {type: "application/zip"}), file.name);
     const response=await fetch(`${API}/api/analyze`,{method:"POST",body:form,signal:AbortSignal.timeout(120000)});
     const body=await response.json();
     if(!response.ok)throw new Error(typeof body.detail==="string"?body.detail:"Analysis failed");
+    const sources = new Map();
+    const decoder = new TextDecoder('utf-8', { ignoreBOM: true });
+    const filesByPath = new Map(Object.entries(files).map(([path, bytes]) => [path.replaceAll('\\', '/'), bytes]));
+    for (const { path, endLine } of body.findings) {
+     if (endLine && filesByPath.has(path) && !sources.has(path)) {
+      sources.set(path, decoder.decode(filesByPath.get(path)).replace(/\r\n?/g, '\n'));
+     }
+    }
+    setSourceByPath(sources);
     setReport(body);
    }catch(e){setError(`Python API analysis failed: ${e.message}. You can switch to Browser analysis and select the ZIP again.`);}
    finally{setBusy(false);}
@@ -123,7 +132,7 @@ function App(){
   </select></label>
   <a href="https://github.com/Mirnamo/ai-app-rescue-lab">GitHub ↗</a>
  </div></nav>
- <header><div><p>YOUR PROJECT / STATIC CODE REVIEW</p><h1>Find risks.<br/><em>Plan your rescue.</em></h1><div className="summary">Upload a source ZIP to identify common security and reliability signals with file locations and remediation guidance. {mode==="server"?"Your browser removes .env files from the ZIP before sending a copy to the Python API.":"Analysis runs locally in your browser; source code is not uploaded."}</div><label className="scanUpload">{busy?'Analyzing…':'Analyze your ZIP'}<input aria-label="Upload project ZIP" disabled={busy} type="file" accept=".zip" onChange={upload}/></label><p>15 MB ZIP · 40 MB expanded · 2,000 entries · 2 MB per file</p></div></header>
+ <header><div><h1>Find risks.<br/><em>Plan your rescue.</em></h1><div className="summary">Upload a source ZIP to identify common security and reliability signals with file locations and remediation guidance. {mode==="server"?"Your browser removes .env files from the ZIP before sending a copy to the Python API.":"Analysis runs locally in your browser; source code is not uploaded."}</div><label className="scanUpload">{busy?'Analyzing…':'Analyze your ZIP'}<input aria-label="Upload project ZIP" disabled={busy} type="file" accept=".zip" onChange={upload}/></label><p>15 MB ZIP · 40 MB expanded · 2,000 entries · 2 MB per file</p></div></header>
  <label>Analysis mode <select aria-label="Analysis mode" value={mode} disabled={busy} onChange={e=>setMode(e.target.value)}><option value="server" disabled={!API}>Python API{!API?" (not configured)":""}</option><option value="browser">Browser analysis</option></select></label><p>{mode==="server"?"ZIP contents are processed temporarily by the configured Python API and are not stored.":"ZIP contents stay in your browser."} Maximum upload: 15 MB.</p>\n {error&&<div className="error" role="alert">{error}</div>}{busy&&<div className="loading" role="status">{mode==="server"?"Preparing and analyzing ZIP…":"Reviewing source files…"}</div>}
  {report&&<><div className="reportHeader"><h2>{report.project}</h2><button type="button" onClick={downloadReport}>Download JSON report</button></div><dl className="reportSummary">
   <div><dt>Files reviewed</dt><dd>{report.summary.files}</dd></div>

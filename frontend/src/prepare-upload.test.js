@@ -13,8 +13,10 @@ test('rebuilds the server upload without environment files at any depth', () => 
     'env.md': strToU8('configuration notes'),
   });
 
-  const upload = unzipSync(prepareServerArchive(original.buffer));
+  const { upload: archive, files } = prepareServerArchive(original.buffer);
+  const upload = unzipSync(archive);
   assert.deepEqual(Object.keys(upload).sort(), ['env.md', 'src/app.py']);
+  assert.deepEqual(Object.keys(files).sort(), Object.keys(upload).sort());
   assert.equal(strFromU8(upload['src/app.py']), 'print("hello")');
   assert.ok(scanArchive(original.buffer, 'local').findings.some(({ path, id }) => path === '.env' && id.startsWith('SECRET')));
 });
