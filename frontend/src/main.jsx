@@ -133,8 +133,8 @@ function App(){
  </dl>
  <p>{report.limitations}</p>
  <CorsOriginReview origins={report.corsOrigins} onAnswer={answerCorsOrigin}/>
- <FindingsTable findings={report.findings} sourceByPath={sourceByPath}/>
- <details><summary>Reviewed files</summary>{report.files.map(f=><p key={f.path}>{f.path} · {f.lines} lines</p>)}</details></>}
+ <details><summary>Reviewed files</summary>{report.files.map(f=><p key={f.path}>{f.path} · {f.lines} lines</p>)}</details>
+ <FindingsTable findings={report.findings} sourceByPath={sourceByPath}/></>}
  <p>This tool does not run your app, verify authentication, or certify production readiness. Review findings before changing code.</p></main>
 }
 function FindingsTable({ findings, sourceByPath }) {
