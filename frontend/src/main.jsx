@@ -125,11 +125,50 @@ function App(){
  </div></nav>
  <header><div><p>YOUR PROJECT / STATIC CODE REVIEW</p><h1>Find risks.<br/><em>Plan your rescue.</em></h1><div className="summary">Upload a source ZIP to identify common security and reliability signals with file locations and remediation guidance. {mode==="server"?"Your browser removes .env files from the ZIP before sending a copy to the Python API.":"Analysis runs locally in your browser; source code is not uploaded."}</div><label className="scanUpload">{busy?'Analyzing…':'Analyze your ZIP'}<input aria-label="Upload project ZIP" disabled={busy} type="file" accept=".zip" onChange={upload}/></label><p>15 MB ZIP · 40 MB expanded · 2,000 entries · 2 MB per file</p></div></header>
  <label>Analysis mode <select aria-label="Analysis mode" value={mode} disabled={busy} onChange={e=>setMode(e.target.value)}><option value="server" disabled={!API}>Python API{!API?" (not configured)":""}</option><option value="browser">Browser analysis</option></select></label><p>{mode==="server"?"ZIP contents are processed temporarily by the configured Python API and are not stored.":"ZIP contents stay in your browser."} Maximum upload: 15 MB.</p>\n {error&&<div className="error" role="alert">{error}</div>}{busy&&<div className="loading" role="status">{mode==="server"?"Preparing and analyzing ZIP…":"Reviewing source files…"}</div>}
- {report&&<><div className="reportHeader"><h2>{report.project}</h2><button type="button" onClick={downloadReport}>Download JSON report</button></div><section className="stats"><article><strong>{report.summary.files}</strong><span>Files reviewed</span></article><article><strong>{report.summary.lines}</strong><span>Lines reviewed</span></article><article><strong>{report.findings.length}</strong><span>Review signals</span></article><article><strong>{report.summary.high}</strong><span>High priority</span></article></section><p>{report.limitations}</p><CorsOriginReview origins={report.corsOrigins} onAnswer={answerCorsOrigin}/><section className="reportFindings">{report.findings.length?report.findings.map(f=><article className="panel" key={f.id}><span className={`severity ${f.severity}`}>{f.severity}</span><h3>{f.title}</h3><p>{f.path}{f.endLine > f.line ? ` · lines ${f.line}–${f.endLine}` : f.line ? ` · line ${f.line}` : ""}</p>
- {f.endLine && sourceByPath?.has(f.path) && <FindingSource source={sourceByPath.get(f.path)} path={f.path} line={f.line} endLine={f.endLine}/>}
- <p>{f.remediation}</p><small>Needs human review · No automatic fix applied</small></article>):<div className="panel">No configured rule signals found. This does not establish that the app is secure.</div>}</section><details><summary>Reviewed files</summary>{report.files.map(f=><p key={f.path}>{f.path} · {f.lines} lines</p>)}</details></>}
+ {report&&<><div className="reportHeader"><h2>{report.project}</h2><button type="button" onClick={downloadReport}>Download JSON report</button></div><dl className="reportSummary">
+  <div><dt>Files reviewed</dt><dd>{report.summary.files}</dd></div>
+  <div><dt>Lines reviewed</dt><dd>{report.summary.lines}</dd></div>
+  <div><dt>Review signals</dt><dd>{report.findings.length}</dd></div>
+  <div><dt>High priority</dt><dd>{report.summary.high}</dd></div>
+ </dl>
+ <p>{report.limitations}</p>
+ <CorsOriginReview origins={report.corsOrigins} onAnswer={answerCorsOrigin}/>
+ <FindingsTable findings={report.findings} sourceByPath={sourceByPath}/>
+ <details><summary>Reviewed files</summary>{report.files.map(f=><p key={f.path}>{f.path} · {f.lines} lines</p>)}</details></>}
  <p>This tool does not run your app, verify authentication, or certify production readiness. Review findings before changing code.</p></main>
 }
+function FindingsTable({ findings, sourceByPath }) {
+ if (!findings.length) {
+  return <p>No configured rule signals found. This does not establish that the app is secure.</p>;
+ }
+
+ return <div className="reportFindings" tabIndex={0} role="region" aria-label="Scan findings">
+  <table className="findingsTable">
+   <thead>
+    <tr>
+     <th scope="col">Severity</th>
+     <th scope="col">Finding</th>
+     <th scope="col">Location</th>
+     <th scope="col">Suggested fix</th>
+    </tr>
+   </thead>
+   <tbody>
+    {findings.map(finding => <tr key={finding.id}>
+     <td><span className={`severity ${finding.severity}`}>{finding.severity}</span></td>
+     <th scope="row">{finding.title}</th>
+     <td>
+      <div>{finding.path}{finding.endLine > finding.line ? ` · lines ${finding.line}–${finding.endLine}` : finding.line ? ` · line ${finding.line}` : ""}</div>
+      {finding.endLine && sourceByPath?.has(finding.path) && (
+       <FindingSource source={sourceByPath.get(finding.path)} path={finding.path} line={finding.line} endLine={finding.endLine}/>
+      )}
+     </td>
+     <td>{finding.remediation}</td>
+    </tr>)}
+   </tbody>
+  </table>
+ </div>;
+}
+
 function Architecture(){return <section className="architecture"><div className="arch before"><p>BEFORE</p><h2>Generated monolith</h2><div className="node">React UI + role checks</div><div className="arrow">↓</div><div className="node risk">Unvalidated API + business logic</div><div className="arrow">↓</div><div className="node risk">Direct database access</div><small>Client trust · coupled logic · silent errors</small></div><div className="divider">→</div><div className="arch after"><p>AFTER</p><h2>Explicit trust boundaries</h2><div className="node">React interface</div><div className="arrow">↓</div><div className="node safe">Identity + policy + validation</div><div className="arrow">↓</div><div className="nodes"><span>Service</span><span>Repository</span><span>Audit</span></div><small>Server enforcement · typed contracts · traceable changes</small></div></section>}
 createRoot(document.getElementById("root")).render(<App/>);
 

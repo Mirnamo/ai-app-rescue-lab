@@ -133,7 +133,84 @@ select {
   opacity: 0.65;
 }
 
-.reportFindings{display:grid;gap:16px;margin-top:24px}.reportFindings article{padding:24px}.reportFindings p{overflow-wrap:anywhere}button{cursor:pointer}
+button{cursor:pointer}
+
+.reportSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  margin: 0;
+  padding: 12px 0;
+  border-block: 1px solid var(--border);
+}
+
+.reportSummary div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.reportSummary dt {
+  color: var(--muted);
+}
+
+.reportSummary dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.reportFindings {
+  margin: 24px 0 16px;
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.reportFindings:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.findingsTable {
+  width: 100%;
+  min-width: 720px;
+  table-layout: fixed;
+  border-collapse: collapse;
+  text-align: start;
+}
+
+.findingsTable th,
+.findingsTable td {
+  padding: 12px 16px;
+  text-align: start;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.findingsTable thead {
+  background: var(--control-bg);
+}
+
+.findingsTable thead th:first-child {
+  width: 100px;
+}
+
+.findingsTable thead th:nth-child(2) {
+  width: 22%;
+}
+
+.findingsTable thead th:nth-child(3) {
+  width: 36%;
+}
+
+.findingsTable tbody tr {
+  border-top: 1px solid var(--border);
+}
+
+.findingsTable .findingSource {
+  margin-top: 8px;
+}
 .corsReview{margin-top:24px}
 .corsReview fieldset{min-inline-size:0;margin:12px 0;padding:12px 20px;border:1px solid var(--border);border-radius:14px;background:var(--surface)}
 .corsReview legend,.corsReview p{overflow-wrap:anywhere}
